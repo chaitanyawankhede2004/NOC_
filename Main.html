@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NCO-2015 Semantic Search Prototype</title>
+    <!-- Tailwind CSS for styling and Inter font -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        /* Custom styles for the animated spinner */
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* Style for the button */
+        button {
+            transition: all 0.2s ease-in-out;
+        }
+        button:hover {
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transform: translateY(-1px);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <div class="bg-white rounded-xl shadow-lg p-8 w-full max-w-4xl">
+        <!-- Main Title and Description -->
+        <div class="text-center mb-12">
+            <h1 class="text-3xl sm:text-4xl font-bold text-gray-800 mb-2">
+                NCO-2015 Semantic Search Prototype
+            </h1>
+            <p class="text-gray-500 max-w-2xl mx-auto">
+                This prototype demonstrates a modern, AI-enabled approach to classifying occupations. Enter a job title or description to see how it finds the most relevant NCO codes.
+            </p>
+        </div>
+
+        <!-- Search Input and Buttons -->
+        <div class="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4 mb-8">
+            <input type="text" id="searchInput" placeholder="e.g., cloth maker, tailor, darzi, software developer"
+                class="w-full sm:w-2/3 px-4 py-3 rounded-lg border-2 border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
+                aria-label="Search for an occupation">
+            <button id="searchButton"
+                class="w-full sm:w-auto px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg shadow-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                Search
+            </button>
+            <button id="voiceButton"
+                class="w-full sm:w-auto px-6 py-3 bg-gray-600 text-white font-semibold rounded-lg shadow-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-600 focus:ring-offset-2">
+                🎤 Voice Input
+            </button>
+        </div>
+
+        <!-- Results and Status Display Area -->
+        <div class="mt-8 min-h-[300px] flex flex-col items-center justify-start">
+            <!-- Loading Spinner -->
+            <div id="loading" class="hidden spinner"></div>
+
+            <!-- No Results Message -->
+            <div id="noResults" class="hidden text-center text-gray-500 p-8">
+                <p class="text-lg font-medium mb-2">No relevant occupations found.</p>
+                <p class="text-sm">Try broadening your search or using a more general term.</p>
+            </div>
+
+            <!-- Results List -->
+            <div id="resultsContainer" class="w-full space-y-4">
+                <!-- Results will be dynamically inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DATASET & CONFIGURATION ---
+        // This is a simplified in-memory "database" representing the structured NCO data.
+        // In a real system, this would be a high-speed vector index.
+        const ncoData = [
+            {
+                nco_code: '7531.0101',
+                occupation_title: 'Sewing Machine Operator, General',
+                job_description: 'Operates a sewing machine to stitch, mend, and finish various types of fabric, garments, or other materials.',
+                synonyms: ['tailor', 'stitcher', 'cloth maker', 'darzi']
+            },
+            {
+                nco_code: '7531.0102',
+                occupation_title: 'Tailor',
+                job_description: 'Measures, cuts, and sews garments according to a customer\'s specifications or a pattern. Specializes in custom-made apparel.',
+                synonyms: ['cloth maker', 'darzi']
+            },
+            {
+                nco_code: '7531.0103',
+                occupation_title: 'Garment Stitcher',
+                job_description: 'A specialized role focused on stitching components of garments in a factory setting, often using industrial sewing machines.',
+                synonyms: ['sewing professional']
+            },
+            {
+                nco_code: '2512.0101',
+                occupation_title: 'Software Developer',
+                job_description: 'Designs, develops, tests, and maintains software applications and systems. Works with various programming languages and frameworks.',
+                synonyms: ['programmer', 'coder', 'engineer']
+            },
+            {
+                nco_code: '2512.0102',
+                occupation_title: 'Web Developer',
+                job_description: 'Specializes in creating and maintaining websites and web applications. Focuses on front-end, back-end, or full-stack technologies.',
+                synonyms: ['front-end developer', 'back-end developer']
+            },
+            {
+                nco_code: '1411.0101',
+                occupation_title: 'Restaurant Manager',
+                job_description: 'Oversees the daily operations of a restaurant, including staff management, customer service, and ensuring compliance with health and safety standards.',
+                synonyms: ['restaurant owner', 'chef']
+            },
+            {
+                nco_code: '1411.0102',
+                occupation_title: 'Chef',
+                job_description: 'Plans menus, prepares and cooks food, and manages kitchen staff. Responsible for food quality and presentation.',
+                synonyms: ['head cook', 'culinary artist']
+            },
+            {
+                nco_code: '3333.0101',
+                occupation_title: 'Data Entry Operator',
+                job_description: 'Inputs data into computer systems from various sources, such as paper documents, images, or audio recordings. Maintains data accuracy and integrity.',
+                synonyms: ['data clerk', 'typist']
+            }
+        ];
+
+        // --- DOM ELEMENTS & EVENT LISTENERS ---
+        const searchInput = document.getElementById('searchInput');
+        const searchButton = document.getElementById('searchButton');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const loadingSpinner = document.getElementById('loading');
+        const noResultsMessage = document.getElementById('noResults');
+        const voiceButton = document.getElementById('voiceButton');
+
+        // Main search function called by the button or enter key
+        const handleSearch = () => {
+            const query = searchInput.value.trim().toLowerCase();
+            if (query.length === 0) {
+                return; // Do nothing if query is empty
+            }
+
+            // Show loading state
+            resultsContainer.innerHTML = '';
+            noResultsMessage.classList.add('hidden');
+            loadingSpinner.classList.remove('hidden');
+
+            // Simulate a network delay to mimic an API call
+            setTimeout(() => {
+                const results = simulateSemanticSearch(query);
+                renderResults(results);
+                loadingSpinner.classList.add('hidden');
+            }, 1000); // 1-second delay
+        };
+
+        // Event listeners for user input
+        searchButton.addEventListener('click', handleSearch);
+        searchInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                handleSearch();
+            }
+        });
+
+        // Placeholder for the voice input functionality
+        voiceButton.addEventListener('click', () => {
+            alert('Voice input is not yet implemented in this prototype.');
+        });
+
+        // --- SIMULATED BACKEND LOGIC ---
+        // This function simulates the semantic search engine's behavior.
+        const simulateSemanticSearch = (query) => {
+            // A simple token-based matching algorithm to mimic "semantic" search
+            const queryTokens = query.split(/\s+/);
+            const scoredResults = ncoData.map(occupation => {
+                const searchFields = [
+                    occupation.occupation_title.toLowerCase(),
+                    occupation.job_description.toLowerCase(),
+                    ...(occupation.synonyms || []).map(s => s.toLowerCase())
+                ].join(' ');
+                
+                let score = 0;
+                // Check for direct word matches (simulating high relevance)
+                queryTokens.forEach(token => {
+                    if (searchFields.includes(token)) {
+                        score += 0.2;
+                    }
+                });
+
+                // Simple check for full phrase match in a field
+                if (searchFields.includes(query)) {
+                    score += 0.8;
+                }
+
+                // Boost score if the query is a synonym
+                if (occupation.synonyms && occupation.synonyms.includes(query)) {
+                    score = 0.9 + Math.random() * 0.1; // A very high score for a direct synonym match
+                }
+
+                // If no tokens match, the score is low
+                if (score === 0) {
+                    return null;
+                }
+
+                // A randomized factor to simulate the confidence score variance
+                const finalScore = Math.min(1.0, score * (0.8 + Math.random() * 0.4)); // Cap score at 1.0
+
+                return {
+                    ...occupation,
+                    confidence_score: finalScore
+                };
+            }).filter(Boolean); // Filter out null results
+
+            // Sort results by confidence score in descending order
+            scoredResults.sort((a, b) => b.confidence_score - a.confidence_score);
+
+            // Return only the top 5 results
+            return scoredResults.slice(0, 5);
+        };
+
+        // --- RESULTS RENDERING ---
+        const renderResults = (results) => {
+            if (results.length === 0) {
+                noResultsMessage.classList.remove('hidden');
+                return;
+            }
+
+            results.forEach(result => {
+                const resultCard = document.createElement('div');
+                resultCard.className = 'bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-sm';
+                resultCard.innerHTML = `
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="text-lg font-bold text-gray-800">${result.occupation_title}</h3>
+                        <span class="text-sm font-medium text-gray-500">Score: ${result.confidence_score.toFixed(2)}</span>
+                    </div>
+                    <p class="text-sm font-medium text-gray-600 mb-2">NCO Code: ${result.nco_code}</p>
+                    <p class="text-gray-500 text-sm italic">${result.job_description}</p>
+                `;
+                resultsContainer.appendChild(resultCard);
+            });
+        };
+    </script>
+</body>
+</html>
